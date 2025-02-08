@@ -7,7 +7,7 @@ from xgboost import XGBClassifier
 
 # Load model yang sudah dilatih
 model = XGBClassifier()
-model.load_model("trained_model.json")  # Ganti path jika perlu
+model.load_model("xgb_churn_model.json")  # Ganti path jika perlu
 
 # Fungsi preprocessing
 def preprocess_data(input_data):
