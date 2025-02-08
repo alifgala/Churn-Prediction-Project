@@ -1,75 +1,64 @@
 import streamlit as st
 import pandas as pd
 import joblib
-import numpy as np
+import xgboost as xgb
 from sklearn.preprocessing import StandardScaler
-from xgboost import XGBClassifier
 
-# Load model yang sudah dilatih
-model = XGBClassifier()
-model.load_model("xgb_churn_model.json")  # Ganti path jika perlu
+# Load model, scaler, dan fitur yang dipakai saat training
+model = xgb.XGBClassifier()
+model.load_model("trained_model.json")
 
-# Fungsi preprocessing
-def preprocess_data(input_data):
-    input_data = input_data.copy()
+scaler = joblib.load("scaler.pkl")
+selected_features = joblib.load("selected_features.pkl")
 
+# Fungsi untuk prediksi churn
+def predict_churn(input_data):
     # Konversi TotalCharges ke numerik jika masih string
     input_data["TotalCharges"] = pd.to_numeric(input_data["TotalCharges"], errors="coerce")
 
     # One-hot encoding untuk fitur kategorikal
-    categorical_cols = [
-        "gender", "Partner", "Dependents", "PhoneService", "MultipleLines", "InternetService",
-        "OnlineSecurity", "OnlineBackup", "DeviceProtection", "TechSupport", "StreamingTV",
-        "StreamingMovies", "Contract", "PaperlessBilling", "PaymentMethod"
-    ]
-    input_data = pd.get_dummies(input_data, columns=categorical_cols, drop_first=True)
+    input_data = pd.get_dummies(input_data, drop_first=True)
 
-    # Pastikan semua fitur yang digunakan dalam model tersedia
-    expected_features = [
-        "tenure", "MonthlyCharges", "TotalCharges", "gender_Male", "Partner_Yes", "Dependents_Yes",
-        "PhoneService_Yes", "MultipleLines_No phone service", "MultipleLines_Yes", "InternetService_Fiber optic",
-        "InternetService_No", "OnlineSecurity_No internet service", "OnlineSecurity_Yes", "OnlineBackup_No internet service",
-        "OnlineBackup_Yes", "DeviceProtection_No internet service", "DeviceProtection_Yes", "TechSupport_No internet service",
-        "TechSupport_Yes", "StreamingTV_No internet service", "StreamingTV_Yes", "StreamingMovies_No internet service",
-        "StreamingMovies_Yes", "Contract_One year", "Contract_Two year", "PaperlessBilling_Yes",
-        "PaymentMethod_Credit card (automatic)", "PaymentMethod_Electronic check", "PaymentMethod_Mailed check"
-    ]
-
-    for col in expected_features:
+    # Pastikan fitur input sesuai dengan yang digunakan saat training
+    for col in selected_features:
         if col not in input_data.columns:
-            input_data[col] = 0  # Tambahkan kolom yang hilang dengan nilai 0
+            input_data[col] = 0
 
-    # Normalisasi fitur numerik
-    scaler = StandardScaler()
-    input_data[expected_features] = scaler.fit_transform(input_data[expected_features])
+    input_data = input_data[selected_features]
 
-    return input_data[expected_features]
+    # Normalisasi data menggunakan scaler yang sama saat training
+    input_data_scaled = scaler.transform(input_data)
 
-# Fungsi prediksi churn
-def predict_churn(input_data):
-    processed_data = preprocess_data(input_data)
-    predictions = model.predict(processed_data)
+    # Prediksi churn
+    predictions = model.predict(input_data_scaled)
     input_data["Churn Prediction"] = predictions
     input_data["Churn Prediction"] = input_data["Churn Prediction"].map({0: "No", 1: "Yes"})
+
     return input_data
 
 # Streamlit UI
-st.title("📊 Customer Churn Prediction")
-st.write("Upload file CSV untuk memprediksi apakah pelanggan akan churn atau tidak.")
+st.title("Customer Churn Prediction")
+st.write("Upload a CSV file to predict customer churn.")
 
 # File uploader
-uploaded_file = st.file_uploader("Pilih file CSV", type="csv")
+uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
 
 if uploaded_file is not None:
+    # Load CSV
     input_data = pd.read_csv(uploaded_file)
-    st.write("### 📄 Data yang diunggah:")
+
+    # Display input data
+    st.write("Input Data:")
     st.dataframe(input_data)
 
-    if st.button("🔍 Prediksi Churn"):
+    # Button untuk prediksi
+    if st.button("Predict"):
         result = predict_churn(input_data)
-        st.write("### 📌 Hasil Prediksi Churn:")
-        st.dataframe(result[["customerID", "Churn Prediction"]])  # Tampilkan customerID dan hasil prediksi
-        
-        # Unduh hasil prediksi
+
+        # Display hasil prediksi
+        st.write("Predicted Churn:")
+        st.dataframe(result)
+
+        # Download hasil prediksi
         result_csv = result.to_csv(index=False)
-        st.download_button(label="📥 Download Hasil Prediksi", data=result_csv, file_name="churn_predictions.csv", mime="text/csv")
+        st.download_button(label="Download Result CSV", data=result_csv, file_name="churn_predictions.csv", mime="text/csv")
